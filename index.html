@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Richter Ops</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg: #ffffff; --surface: #f7f7f7; --surface2: #efefef;
+  --border: #e0e0e0; --border2: #d0d0d0; --text: #1a1a1a;
+  --muted: #888; --dim: #bbb;
+  --brand: #C30000; --brand-dim: rgba(195,0,0,0.08); --brand-mid: rgba(195,0,0,0.2);
+  --red: #e05555; --red-dim: rgba(224,85,85,0.1);
+  --green: #2a7a4f; --green-dim: rgba(42,122,79,0.1);
+  --yellow: #b07d00; --yellow-dim: rgba(176,125,0,0.1);
+  --orange: #d46000; --orange-dim: rgba(212,96,0,0.1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── AUTH SCREEN ── */
+#authScreen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.auth-inner { width: 100%; max-width: 420px; text-align: center; }
+.logo { font-family: 'Bebas Neue', sans-serif; font-size: 56px; letter-spacing: 0.06em; color: var(--brand); line-height: 1; margin-bottom: 4px; }
+.tagline { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; margin-bottom: 48px; }
+.btn-google { width: 100%; background: #fff; border: 1.5px solid var(--border2); border-radius: 10px; padding: 14px 20px; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 15px; color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; transition: all 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.btn-google:hover { border-color: var(--brand); box-shadow: 0 2px 10px rgba(195,0,0,0.12); }
+.btn-google svg { width: 20px; height: 20px; flex-shrink: 0; }
+.auth-note { margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.auth-error { margin-top: 14px; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--red); min-height: 18px; }
+.auth-loading { margin-top: 14px; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--brand); }
+
+/* ── TOKEN SCREEN ── */
+#tokenScreen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.token-inner { width: 100%; max-width: 460px; }
+.setup-label { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+input[type="password"], input[type="text"], input[type="email"] { width: 100%; background: #fff; border: 1.5px solid var(--border2); border-radius: 8px; padding: 14px 16px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; margin-bottom: 12px; }
+input:focus { border-color: var(--brand); }
+input::placeholder { color: var(--dim); }
+.btn-primary { width: 100%; background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 14px; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 15px; cursor: pointer; transition: opacity 0.2s; }
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+.progress-bar-wrap { margin-top: 16px; background: var(--surface2); border-radius: 4px; height: 3px; overflow: hidden; display: none; }
+.progress-bar-wrap.visible { display: block; }
+.progress-bar { height: 100%; background: var(--brand); border-radius: 4px; width: 0%; transition: width 0.4s ease; }
+.setup-status { margin-top: 14px; font-family: 'DM Mono', monospace; font-size: 12px; text-align: center; min-height: 18px; color: var(--muted); }
+.setup-status.loading { color: var(--brand); }
+.setup-status.error { color: var(--red); }
+.setup-note { margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.6; text-align: center; }
+.token-user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; padding: 12px 16px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
+.token-user-info img { width: 32px; height: 32px; border-radius: 50%; }
+.token-user-name { font-size: 13px; font-weight: 600; }
+.token-user-email { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+.remember-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.remember-row input { width: auto; margin-bottom: 0; }
+
+/* ── DASHBOARD ── */
+#dashboard { display: none; min-height: 100vh; flex-direction: column; }
+#dashboard.visible { display: flex; }
+
+.dash-header { background: var(--brand); padding: 0 32px; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(195,0,0,0.3); flex-shrink: 0; }
+.dash-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 0.08em; color: #fff; }
+.dash-logo span { opacity: 0.6; font-size: 20px; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.header-user { display: flex; align-items: center; gap: 8px; }
+.header-avatar { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); }
+.header-username { font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.7); }
+.last-updated { font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.6); }
+.btn-refresh { background: transparent; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 7px 14px; color: rgba(255,255,255,0.8); font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.btn-refresh:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+/* ── NAV TABS ── */
+.dash-nav { background: #fff; border-bottom: 2px solid var(--border); padding: 0 32px; display: flex; gap: 0; position: sticky; top: 60px; z-index: 99; }
+.nav-tab { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding: 14px 20px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; white-space: nowrap; }
+.nav-tab:hover { color: var(--brand); }
+.nav-tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 500; }
+
+/* ── CLIENT TYPE TABS ── */
+.client-type-tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--border); margin-bottom: 28px; }
+.ctype-tab { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 10px 20px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1.5px; transition: all 0.15s; white-space: nowrap; }
+.ctype-tab:hover { color: var(--brand); }
+.ctype-tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 500; }
+
+/* ── TAB PANES ── */
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+.dash-body { padding: 28px 32px; max-width: 1280px; margin: 0 auto; width: 100%; }
+
+/* ── STATS ── */
+.stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 28px; }
+.stat-box { background: #fff; border: 1.5px solid var(--border); border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.stat-box-value { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 0.04em; line-height: 1; margin-bottom: 4px; }
+.stat-box-value.brand { color: var(--brand); }
+.stat-box-value.red { color: var(--red); }
+.stat-box-value.green { color: var(--green); }
+.stat-box-value.muted { color: var(--muted); }
+.stat-box-label { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+.stat-box-clickable { cursor: pointer; transition: all 0.15s; }
+.stat-box-clickable:hover { border-color: var(--brand); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.stat-box-clickable.active-filter { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }
+.stat-box-clickable.active-filter .stat-box-label::after { content: ' ↓'; }
+
+/* ── CONTROLS ── */
+.controls-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.search-input { flex: 1; min-width: 200px; background: #fff; border: 1.5px solid var(--border2); border-radius: 8px; padding: 9px 14px 9px 36px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: 12px center; }
+.search-input:focus { border-color: var(--brand); }
+.search-input::placeholder { color: var(--dim); }
+.sort-select { background: #fff; border: 1.5px solid var(--border2); border-radius: 8px; padding: 9px 14px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 11px; outline: none; cursor: pointer; transition: border-color 0.2s; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+.sort-select:focus { border-color: var(--brand); }
+.section-heading { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1.5px solid var(--border); }
+
+/* ── CLIENT CARDS ── */
+.clients-grid { display: flex; flex-direction: column; gap: 10px; }
+.client-card { background: #fff; border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; animation: fadeUp 0.25s ease both; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.client-card.urgent { border-left: 4px solid var(--red); }
+.client-card.attention { border-left: 4px solid var(--yellow); }
+.client-card.active { border-left: 4px solid var(--green); }
+.card-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; cursor: pointer; transition: background 0.15s; user-select: none; }
+.card-top:hover { background: var(--surface); }
+.client-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.client-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.badge { font-family: 'DM Mono', monospace; font-size: 10px; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.04em; font-weight: 500; }
+.badge.urgent { background: var(--red-dim); color: var(--red); border: 1px solid rgba(224,85,85,0.25); }
+.badge.attention { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(176,125,0,0.25); }
+.badge.active { background: var(--green-dim); color: var(--green); border: 1px solid rgba(42,122,79,0.25); }
+.card-metrics { display: flex; gap: 24px; flex-wrap: wrap; }
+.metric { display: flex; flex-direction: column; gap: 2px; text-align: right; }
+.metric-value { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 500; color: var(--brand); }
+.metric-value.muted { color: var(--muted); font-size: 13px; }
+.metric-label { font-size: 11px; color: var(--muted); }
+.card-expanded { display: none; border-top: 1.5px solid var(--border); }
+.card-expanded.open { display: block; }
+.expand-section { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+.expand-section:last-child { border-bottom: none; }
+.expand-section-title { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+.contract-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
+.contract-row:last-child { border-bottom: none; }
+.contract-name { font-size: 13px; color: var(--text); flex: 1; min-width: 160px; }
+.contract-status { font-family: 'DM Mono', monospace; font-size: 11px; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+.contract-status.in-progress { background: var(--orange-dim); color: var(--orange); }
+.contract-status.complete { background: var(--green-dim); color: var(--green); }
+.contract-status.default { background: var(--surface2); color: var(--muted); }
+.contract-financials { display: flex; gap: 18px; font-family: 'DM Mono', monospace; font-size: 12px; }
+.fin-item { display: flex; flex-direction: column; gap: 1px; }
+.fin-val { color: var(--text); }
+.fin-val.remaining { color: var(--brand); font-weight: 600; }
+.fin-label { font-size: 10px; color: var(--muted); }
+.production-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+.production-item:last-child { border-bottom: none; }
+.prod-name { font-size: 13px; color: var(--text); flex: 1; }
+.prod-link { color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border2); transition: color 0.15s, border-color 0.15s; }
+.prod-link:hover { color: var(--brand); border-color: var(--brand); }
+.prod-group { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.empty-section { font-size: 13px; color: var(--muted); font-style: italic; }
+.card-actions { padding: 12px 22px; display: none; gap: 10px; flex-wrap: wrap; background: var(--surface); border-top: 1px solid var(--border); }
+.card-actions.open { display: flex; }
+.btn-action { background: #fff; border: 1.5px solid var(--border2); border-radius: 6px; padding: 8px 16px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.btn-action:hover { border-color: var(--brand); color: var(--brand); }
+.btn-action.primary { background: var(--brand-dim); border-color: var(--brand); color: var(--brand); }
+.btn-action.primary:hover { background: var(--brand); color: #fff; }
+.btn-action.danger { background: var(--red-dim); border-color: var(--red); color: var(--red); cursor: default; opacity: 0.8; }
+
+/* ── CHART CARD ── */
+.chart-card { background: #fff; border: 1.5px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.chart-title { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 0.05em; color: var(--text); }
+.chart-subtitle { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 3px; }
+.chart-total-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 0.04em; color: var(--brand); text-align: right; }
+.chart-total-lbl { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; text-align: right; }
+.chart-wrap { position: relative; height: 260px; }
+.chart-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+.chart-loading.hidden { display: none; }
+
+/* ── MODALS ── */
+#emailModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; padding: 24px; }
+#emailModal.visible { display: flex; }
+#chartModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; align-items: center; justify-content: center; padding: 24px; }
+#chartModal.visible { display: flex; }
+.modal-inner { background: #fff; border: 1.5px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto; animation: modalIn 0.2s ease; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
+.modal-inner.wide { max-width: 1000px; }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.97) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 0.05em; color: var(--brand); }
+.modal-subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.btn-close { background: transparent; border: 1.5px solid var(--border2); border-radius: 6px; padding: 6px 12px; color: var(--muted); cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; }
+.btn-close:hover { color: var(--text); }
+.modal-instructions { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; padding: 12px 16px; background: var(--brand-dim); border-radius: 8px; border-left: 3px solid var(--brand); }
+.email-output { background: var(--surface); border: 1.5px solid var(--border); border-radius: 8px; padding: 20px; font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; margin-bottom: 20px; min-height: 200px; font-family: 'DM Mono', monospace; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── MISC ── */
+.loading-state { text-align: center; padding: 80px 20px; }
+.loading-spinner { width: 34px; height: 34px; border: 2px solid var(--border2); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 14px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+.empty-state { text-align: center; padding: 60px 20px; font-family: 'DM Mono', monospace; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     AUTH SCREEN
+══════════════════════════════════════════ -->
+<div id="authScreen">
+  <div class="auth-inner">
+    <div class="logo">RICHTER</div>
+    <div class="tagline">Operations Dashboard</div>
+    <button class="btn-google" onclick="signInWithGoogle()">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <div class="auth-error" id="authError"></div>
+    <p class="auth-note">Access restricted to @richter10point2.com accounts.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TOKEN SCREEN
+══════════════════════════════════════════ -->
+<div id="tokenScreen" style="display:none">
+  <div class="token-inner">
+    <div class="logo" style="margin-bottom:2px">RICHTER</div>
+    <div class="tagline" style="margin-bottom:32px">Operations Dashboard</div>
+    <div class="token-user-info" id="tokenUserInfo"></div>
+    <div class="setup-label">Monday.com API Token</div>
+    <input type="password" id="tokenInput" placeholder="Paste your API token..." />
+    <label class="remember-row">
+      <input type="checkbox" id="rememberToken" checked /> Remember token on this device
+    </label>
+    <button class="btn-primary" id="loadBtn" onclick="loadDashboard()">Load Dashboard</button>
+    <div class="progress-bar-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="setup-status" id="setupStatus"></div>
+    <p class="setup-note">Your token is never stored or transmitted anywhere except Monday.com.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     DASHBOARD
+══════════════════════════════════════════ -->
+<div id="dashboard">
+
+  <div class="dash-header">
+    <div class="dash-logo">RICHTER <span>/ OPS</span></div>
+    <div class="header-right">
+      <div class="header-user" id="headerUser"></div>
+      <div class="last-updated" id="lastUpdated"></div>
+      <button class="btn-refresh" onclick="refreshDashboard()">↻ Refresh</button>
+      <button class="btn-refresh" onclick="signOut()" style="opacity:0.6">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Nav tabs -->
+  <div class="dash-nav">
+    <div class="nav-tab active" id="navClients" onclick="switchNavTab('clients')">Clients</div>
+    <div class="nav-tab" id="navAnalytics" onclick="switchNavTab('analytics')">Analytics</div>
+  </div>
+
+  <!-- ── CLIENTS TAB ── -->
+  <div id="paneClients" class="tab-pane active">
+    <div class="dash-body">
+
+      <!-- Stats boxes -->
+      <div class="stats-row">
+        <div class="stat-box stat-box-clickable active-filter" id="statBoxAll" onclick="setFilterFromBox('all','statBoxAll')">
+          <div class="stat-box-value brand" id="statTotal">—</div>
+          <div class="stat-box-label" id="statTotalLabel">Clients</div>
+        </div>
+        <div class="stat-box stat-box-clickable" id="statBoxActive" onclick="setFilterFromBox('active','statBoxActive')">
+          <div class="stat-box-value green" id="statActive">—</div>
+          <div class="stat-box-label">In Production</div>
+        </div>
+        <div class="stat-box stat-box-clickable" id="statBoxUrgent" onclick="setFilterFromBox('urgent','statBoxUrgent')">
+          <div class="stat-box-value red" id="statUrgent">—</div>
+          <div class="stat-box-label">Needs Attention</div>
+        </div>
+        <div class="stat-box stat-box-clickable" id="statBoxComplete" onclick="setFilterFromBox('complete','statBoxComplete')">
+          <div class="stat-box-value muted" id="statComplete">—</div>
+          <div class="stat-box-label">Complete</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-value brand" id="statBudget">—</div>
+          <div class="stat-box-label">Total Budget Remaining</div>
+        </div>
+      </div>
+
+      <!-- Client type tabs -->
+      <div class="client-type-tabs">
+        <div class="ctype-tab active" id="ctypeEnterprise" onclick="setClientType('Enterprise')">Enterprise</div>
+        <div class="ctype-tab" id="ctypeRichter" onclick="setClientType('Richter')">Richter</div>
+        <div class="ctype-tab" id="ctypeC1" onclick="setClientType('C1')">C1</div>
+        <div class="ctype-tab" id="ctypeRP" onclick="setClientType('RP')">Richter Productions</div>
+      </div>
+
+      <!-- Search + sort -->
+      <div class="controls-row">
+        <input class="search-input" id="searchInput" type="text" placeholder="Search clients..." oninput="renderDashboard()" />
+        <select class="sort-select" id="sortSelect" onchange="renderDashboard()">
+          <option value="health">Sort: Health Status</option>
+          <option value="name">Sort: Name A–Z</option>
+          <option value="name_desc">Sort: Name Z–A</option>
+          <option value="budget_desc">Sort: Budget ↓</option>
+          <option value="budget_asc">Sort: Budget ↑</option>
+        </select>
+      </div>
+
+      <div class="section-heading" id="sectionHeading">CLIENTS</div>
+      <div class="clients-grid" id="clientsGrid">
+        <div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">Loading clients...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ANALYTICS TAB ── -->
+  <div id="paneAnalytics" class="tab-pane">
+    <div class="dash-body">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Enterprise Production</div>
+            <div class="chart-subtitle" id="chartSubtitle">Weekly VSD & project count — enterprise completed projects</div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+            <div id="chartTotal" style="text-align:right;"></div>
+            <button class="btn-action" onclick="openChartModal()" style="white-space:nowrap;">⤢ Expand</button>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="revenueChart"></canvas>
+          <div class="chart-loading" id="chartLoading">Loading chart data...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end #dashboard -->
+
+<!-- ══════════════════════════════════════════
+     EMAIL MODAL
+══════════════════════════════════════════ -->
+<div id="emailModal">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <div><div class="modal-title">Draft Strategy Email</div><div class="modal-subtitle" id="modalSubtitle"></div></div>
+      <button class="btn-close" onclick="closeModal()">✕ Close</button>
+    </div>
+    <div class="modal-instructions">
+      Pre-loaded with <strong id="modalClientName"></strong>'s context. Paste into your <strong>Strategy Email Creator</strong> project in Claude.
+    </div>
+    <div class="email-output" id="promptOutput"></div>
+    <div class="modal-actions">
+      <a href="https://claude.ai" target="_blank"><button class="btn-action">↗ Open Claude</button></a>
+      <button class="btn-action primary" id="copyPromptBtn" onclick="copyPrompt()">Copy Prompt</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     CHART MODAL
+══════════════════════════════════════════ -->
+<div id="chartModal">
+  <div class="modal-inner wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="chartModalTitle">Enterprise Production</div>
+        <div class="modal-subtitle">Weekly VSD & project count</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div id="modalChartTotal" style="text-align:right;"></div>
+        <select id="weeksSelect" class="sort-select" onchange="updateModalChart()">
+          <option value="6">Last 6 weeks</option>
+          <option value="12">Last 12 weeks</option>
+          <option value="26">Last 6 months</option>
+          <option value="52">Last 12 months</option>
+          <option value="999">All time</option>
+        </select>
+        <button class="btn-close" onclick="closeChartModal()">✕ Close</button>
+      </div>
+    </div>
+    <div style="position:relative;height:400px;">
+      <canvas id="revenueChartModal"></canvas>
+      <div id="chartLoadingModal" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════════ -->
+<script>
+// ── FIREBASE CONFIG ──
+// Replace these values with your Firebase project config
+const firebaseConfig = {
+  apiKey: "AIzaSyCtcVE94mNXpXP4Z1qNJR67f7yIO8I5B_s",
+  authDomain: "richter-ops.firebaseapp.com",
+  projectId: "richter-ops",
+  storageBucket: "richter-ops.firebasestorage.app",
+  messagingSenderId: "987111641154",
+  appId: "1:987111641154:web:3742620aa10f5d358edddb"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+provider.setCustomParameters({ hd: 'richter10point2.com' });
+
+let currentUser = null;
+
+auth.onAuthStateChanged(function(user) {
+  if (user) {
+    const domain = user.email.split('@')[1];
+    if (domain !== 'richter10point2.com') {
+      auth.signOut();
+      document.getElementById('authError').textContent = 'Access restricted to @richter10point2.com accounts.';
+      return;
+    }
+    currentUser = user;
+    showTokenScreen(user);
+  } else {
+    currentUser = null;
+    document.getElementById('authScreen').style.display = 'flex';
+    document.getElementById('tokenScreen').style.display = 'none';
+    document.getElementById('dashboard').classList.remove('visible');
+  }
+});
+
+function signInWithGoogle() {
+  document.getElementById('authError').textContent = '';
+  auth.signInWithPopup(provider).catch(function(err) {
+    document.getElementById('authError').textContent = err.message;
+  });
+}
+
+function signOut() {
+  apiToken = '';
+  allClients = [];
+  auth.signOut();
+}
+
+function showTokenScreen(user) {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('dashboard').classList.remove('visible');
+
+  // Show user info
+  document.getElementById('tokenUserInfo').innerHTML =
+    (user.photoURL ? '<img src="' + user.photoURL + '" style="width:32px;height:32px;border-radius:50%">' : '') +
+    '<div><div class="token-user-name">' + (user.displayName || user.email) + '</div>' +
+    '<div class="token-user-email">' + user.email + '</div></div>';
+
+  // Check for saved token
+  const saved = localStorage.getItem('richter_monday_token_' + user.uid);
+  if (saved) {
+    apiToken = saved;
+    document.getElementById('tokenInput').value = saved;
+    document.getElementById('tokenScreen').style.display = 'flex';
+    // Auto-load
+    loadDashboard();
+  } else {
+    document.getElementById('tokenScreen').style.display = 'flex';
+  }
+}
+
+// ── MONDAY CONFIG ──
+const CLIENTS_BOARD_ID = '985265457';
+const PRODUCTION_BOARD_ID = '1311501605';
+const COMPLETED_BOARD_ID = '78835927';
+const CLIENT_PROGRAM_COL = 'link8';
+const CLIENT_TYPE_COL = 'status_1_mkmpbt98';
+const SUBITEM_COLS = { status: 'status', contractAmount: 'numbers__1', complete: 'complete__1' };
+
+const CLIENT_TYPES = ['Enterprise', 'Richter', 'C1', 'RP'];
+const CLIENT_TYPE_LABELS = { 'Enterprise': 'Enterprise', 'Richter': 'Richter', 'C1': 'C1', 'RP': 'Richter Productions' };
+
+let apiToken = '';
+let allClients = [];
+let currentFilter = 'all';
+let currentClientType = 'Enterprise';
+let currentClientForEmail = null;
+
+async function mondayQuery(query) {
+  const r = await fetch('https://api.monday.com/v2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': apiToken, 'API-Version': '2024-01' },
+    body: JSON.stringify({ query })
+  });
+  const d = await r.json();
+  if (d.errors) throw new Error(d.errors[0].message);
+  return d.data;
+}
+
+async function loadDashboard() {
+  apiToken = document.getElementById('tokenInput').value.trim() || apiToken;
+  if (!apiToken) { setSetupStatus('Please paste your API token.', 'error'); return; }
+
+  if (currentUser && document.getElementById('rememberToken') && document.getElementById('rememberToken').checked) {
+    localStorage.setItem('richter_monday_token_' + currentUser.uid, apiToken);
+  }
+
+  document.getElementById('loadBtn') && (document.getElementById('loadBtn').disabled = true);
+  document.getElementById('progressWrap').classList.add('visible');
+
+  try {
+    setSetupStatus('Loading all clients...', 'loading'); setProgress(15);
+    const clients = await fetchAllClients();
+
+    setSetupStatus('Loading production board...', 'loading'); setProgress(45);
+    const production = await fetchProductionItems();
+
+    setSetupStatus('Processing data...', 'loading'); setProgress(75);
+    allClients = processClients(clients, production);
+
+    setProgress(100);
+    setTimeout(function() {
+      document.getElementById('tokenScreen').style.display = 'none';
+      document.getElementById('dashboard').classList.add('visible');
+
+      // Set header user
+      if (currentUser) {
+        document.getElementById('headerUser').innerHTML =
+          (currentUser.photoURL ? '<img src="' + currentUser.photoURL + '" class="header-avatar">' : '') +
+          '<span class="header-username">' + (currentUser.displayName || currentUser.email).split(' ')[0] + '</span>';
+      }
+
+      renderDashboard();
+      document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+      // Fetch chart in background
+      fetchAndRenderChart();
+    }, 300);
+  } catch(err) {
+    setSetupStatus('Error: ' + err.message, 'error');
+    document.getElementById('loadBtn') && (document.getElementById('loadBtn').disabled = false);
+  }
+}
+
+async function fetchAllClients() {
+  // Fetch ALL clients from ALL groups — filter by CLIENT_TYPE_COL in JS
+  const data = await mondayQuery(`
+    query {
+      boards(ids:[${CLIENTS_BOARD_ID}]) {
+        items_page(limit: 500) {
+          items {
+            id name
+            column_values { id text value }
+            subitems { id name column_values { id text value } }
+          }
+        }
+      }
+    }
+  `);
+  return data.boards[0].items_page.items;
+}
+
+async function fetchProductionItems() {
+  const data = await mondayQuery(`
+    query {
+      boards(ids:[${PRODUCTION_BOARD_ID}]) {
+        items_page(limit: 500) {
+          items {
+            id name
+            group { title }
+            column_values {
+              id text value
+              ... on BoardRelationValue { linked_items { id name } }
+            }
+          }
+        }
+      }
+    }
+  `);
+  return data.boards[0].items_page.items;
+}
+
+function processClients(rawClients, rawProduction) {
+  // Build production map by client ID
+  const productionByClientId = {};
+  rawProduction.forEach(function(item) {
+    item.column_values.forEach(function(cv) {
+      if (!cv.linked_items || !cv.linked_items.length) return;
+      cv.linked_items.forEach(function(linked) {
+        const cid = String(linked.id);
+        if (!productionByClientId[cid]) productionByClientId[cid] = [];
+        productionByClientId[cid].push({ id: item.id, name: item.name, group: item.group ? item.group.title : '' });
+      });
+    });
+  });
+
+  return rawClients.map(function(client) {
+    const colMap = {};
+    client.column_values.forEach(function(cv) { colMap[cv.id] = cv; });
+
+    // Client type
+    const clientType = (colMap[CLIENT_TYPE_COL] || {}).text || '';
+
+    // Program link
+    let programUrl = null;
+    const progCol = colMap[CLIENT_PROGRAM_COL];
+    if (progCol && progCol.value) {
+      try { programUrl = JSON.parse(progCol.value).url || null; } catch(e) {}
+    }
+    if (!programUrl && progCol && progCol.text && progCol.text.startsWith('http')) programUrl = progCol.text;
+
+    // Contracts from subitems
+    const contracts = (client.subitems || []).map(function(sub) {
+      const sc = {};
+      sub.column_values.forEach(function(cv) { sc[cv.id] = cv; });
+      const contractAmt = parseFloat((sc[SUBITEM_COLS.contractAmount] || {}).text || '0') || 0;
+      const complete = parseFloat((sc[SUBITEM_COLS.complete] || {}).text || '0') || 0;
+      const status = (sc[SUBITEM_COLS.status] || {}).text || '';
+      return { id: sub.id, name: sub.name, status, contractAmt, complete, remaining: contractAmt - complete, isActive: status.toLowerCase().includes('progress') || status.toLowerCase().includes('active') };
+    });
+
+    const totalRemaining = contracts.reduce(function(s,c) { return s + Math.max(c.remaining,0); }, 0);
+    const activeContracts = contracts.filter(function(c) { return c.isActive; });
+    const productionItems = productionByClientId[String(client.id)] || [];
+    const isInProduction = productionItems.length > 0;
+
+    let health = 'ok';
+    if (totalRemaining > 0 && !isInProduction && activeContracts.length > 0) health = 'urgent';
+    else if (totalRemaining > 0 && isInProduction) health = 'active';
+    else if (totalRemaining > 0) health = 'attention';
+
+    return { id: client.id, name: client.name, clientType, programUrl, contracts, totalRemaining, activeContracts, productionItems, isInProduction, health };
+  }).filter(function(c) { return c.contracts.length > 0 && c.clientType; });
+}
+
+// ── RENDER ──
+function renderDashboard() {
+  const typeClients = allClients.filter(function(c) {
+    return c.clientType.toLowerCase() === currentClientType.toLowerCase();
+  });
+  const filtered = getFilteredClients(typeClients);
+
+  const urgent = typeClients.filter(function(c) { return c.health === 'urgent'; }).length;
+  const active = typeClients.filter(function(c) { return c.isInProduction; }).length;
+  const complete = typeClients.filter(function(c) { return c.health === 'ok'; }).length;
+  const totalBudget = typeClients.reduce(function(s,c) { return s + c.totalRemaining; }, 0);
+
+  document.getElementById('statTotal').textContent = typeClients.length;
+  document.getElementById('statTotalLabel').textContent = CLIENT_TYPE_LABELS[currentClientType] + ' Clients';
+  document.getElementById('statActive').textContent = active;
+  document.getElementById('statUrgent').textContent = urgent;
+  document.getElementById('statComplete').textContent = complete;
+  document.getElementById('statBudget').textContent = formatMoney(totalBudget);
+  document.getElementById('sectionHeading').textContent = (CLIENT_TYPE_LABELS[currentClientType] || currentClientType).toUpperCase() + ' CLIENTS — ' + filtered.length + ' SHOWN';
+
+  const grid = document.getElementById('clientsGrid');
+  if (!filtered.length) { grid.innerHTML = '<div class="empty-state">No clients match this filter.</div>'; return; }
+  grid.innerHTML = filtered.map(function(c,i) { return renderCard(c,i); }).join('');
+}
+
+function renderCard(client, index) {
+  const delay = Math.min(index * 20, 300);
+  const healthClass = client.health === 'ok' ? 'active' : client.health;
+  const badges = {
+    urgent: '<span class="badge urgent">Needs Attention</span>',
+    attention: '<span class="badge attention">Review Contracts</span>',
+    active: '<span class="badge active">In Production</span>',
+    ok: ''
+  };
+
+  const contractsHtml = client.contracts.map(function(c) {
+    const sl = c.status.toLowerCase();
+    const sc = sl.includes('progress')||sl.includes('active') ? 'in-progress' : sl.includes('complete')||sl.includes('done') ? 'complete' : 'default';
+    return '<div class="contract-row"><div class="contract-name">' + esc(c.name) + '</div>' +
+      '<div class="contract-status ' + sc + '">' + esc(c.status || 'No Status') + '</div>' +
+      '<div class="contract-financials">' +
+        '<div class="fin-item"><div class="fin-val">' + formatMoney(c.contractAmt) + '</div><div class="fin-label">Contract</div></div>' +
+        '<div class="fin-item"><div class="fin-val">' + formatMoney(c.complete) + '</div><div class="fin-label">Used</div></div>' +
+        '<div class="fin-item"><div class="fin-val remaining">' + formatMoney(Math.max(c.remaining,0)) + '</div><div class="fin-label">Remaining</div></div>' +
+      '</div></div>';
+  }).join('');
+
+  const prodHtml = client.productionItems.length > 0
+    ? client.productionItems.map(function(p) {
+        return '<div class="production-item"><div class="prod-name"><a href="https://gorichter.monday.com/boards/' + PRODUCTION_BOARD_ID + '/pulses/' + p.id + '" target="_blank" class="prod-link">' + esc(p.name) + '</a></div><div class="prod-group">' + esc(p.group) + '</div></div>';
+      }).join('')
+    : '<div class="empty-section">No active projects in production.</div>';
+
+  const programBtn = client.programUrl
+    ? '<a href="' + esc(client.programUrl) + '" target="_blank"><button class="btn-action">⊞ View Client Program</button></a>'
+    : '<button class="btn-action danger" disabled>⚠ No Client Program</button>';
+
+  return '<div class="client-card ' + healthClass + '" style="animation-delay:' + delay + 'ms">' +
+    '<div class="card-top" onclick="toggleCard(\'' + client.id + '\')">' +
+      '<div class="client-name-row"><div class="client-name">' + esc(client.name) + '</div>' + badges[client.health] + '</div>' +
+      '<div class="card-metrics">' +
+        '<div class="metric"><div class="metric-value">' + formatMoney(client.totalRemaining) + '</div><div class="metric-label">Remaining</div></div>' +
+        '<div class="metric"><div class="metric-value muted">' + client.contracts.length + '</div><div class="metric-label">Contracts</div></div>' +
+        '<div class="metric"><div class="metric-value muted">' + client.productionItems.length + '</div><div class="metric-label">In Production</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-expanded" id="expanded-' + client.id + '">' +
+      '<div class="expand-section"><div class="expand-section-title">Contracts</div>' + contractsHtml + '</div>' +
+      '<div class="expand-section"><div class="expand-section-title">Projects in Production</div>' + prodHtml + '</div>' +
+    '</div>' +
+    '<div class="card-actions" id="actions-' + client.id + '">' +
+      '<button class="btn-action primary" onclick="openEmailModal(\'' + client.id + '\')">✉ Draft Strategy Email</button>' +
+      programBtn +
+      '<a href="https://gorichter.monday.com/boards/' + CLIENTS_BOARD_ID + '/pulses/' + client.id + '" target="_blank"><button class="btn-action">↗ View in Monday</button></a>' +
+    '</div>' +
+  '</div>';
+}
+
+function toggleCard(id) {
+  document.getElementById('expanded-' + id).classList.toggle('open');
+  document.getElementById('actions-' + id).classList.toggle('open');
+}
+
+function getFilteredClients(typeClients) {
+  const search = (document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase().trim() : '');
+  const sort = document.getElementById('sortSelect') ? document.getElementById('sortSelect').value : 'health';
+
+  let list = (typeClients || allClients.filter(function(c) { return c.clientType.toLowerCase() === currentClientType.toLowerCase(); })).filter(function(c) {
+    if (currentFilter === 'urgent' && c.health !== 'urgent') return false;
+    if (currentFilter === 'active' && !c.isInProduction) return false;
+    if (currentFilter === 'budget' && c.totalRemaining <= 0) return false;
+    if (currentFilter === 'complete' && c.health !== 'ok') return false;
+    if (search && !c.name.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  return list.slice().sort(function(a, b) {
+    if (sort === 'name') return a.name.localeCompare(b.name);
+    if (sort === 'name_desc') return b.name.localeCompare(a.name);
+    if (sort === 'budget_desc') return b.totalRemaining - a.totalRemaining;
+    if (sort === 'budget_asc') return a.totalRemaining - b.totalRemaining;
+    const o = {urgent:0, attention:1, active:2, ok:3};
+    if (o[a.health] !== o[b.health]) return o[a.health] - o[b.health];
+    return b.totalRemaining - a.totalRemaining;
+  });
+}
+
+function setClientType(type) {
+  currentClientType = type;
+  currentFilter = 'all';
+  // Reset stat box highlight
+  document.querySelectorAll('.stat-box-clickable').forEach(function(b) { b.classList.remove('active-filter'); });
+  document.getElementById('statBoxAll').classList.add('active-filter');
+  // Update client type tab highlights
+  document.querySelectorAll('.ctype-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('ctype' + type).classList.add('active');
+  // Clear search
+  document.getElementById('searchInput').value = '';
+  renderDashboard();
+  // Update chart title and refetch chart for this type
+  document.getElementById('chartModalTitle').textContent = (CLIENT_TYPE_LABELS[type] || type) + ' Production';
+  // Reset chart cache so it re-fetches with new type filter
+  weekDataCache = {};
+  allGroupsCache = null;
+  fetchAndRenderChart();
+}
+
+function setFilterFromBox(f, boxId) {
+  currentFilter = f;
+  document.querySelectorAll('.stat-box-clickable').forEach(function(b) { b.classList.remove('active-filter'); });
+  document.getElementById(boxId).classList.add('active-filter');
+  renderDashboard();
+}
+
+// ── NAV TABS ──
+function switchNavTab(tab) {
+  document.querySelectorAll('.nav-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('nav' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  document.getElementById('pane' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+}
+
+// ── EMAIL MODAL ──
+function openEmailModal(clientId) {
+  currentClientForEmail = allClients.find(function(c) { return c.id === clientId; });
+  if (!currentClientForEmail) return;
+  const client = currentClientForEmail;
+
+  const contractDetails = client.contracts
+    .filter(function(c) { return c.isActive || c.remaining > 0; })
+    .map(function(c) { return '  - ' + c.name + ': $' + c.contractAmt.toLocaleString() + ' total, $' + formatMoneyRaw(c.complete) + ' used, $' + formatMoneyRaw(Math.max(c.remaining,0)) + ' remaining (Status: ' + (c.status || 'Unknown') + ')'; })
+    .join('\n') || '  - See Monday.com for contract details';
+
+  const productionContext = client.productionItems.length > 0
+    ? client.productionItems.map(function(p) { return '  - ' + p.name + ' (Team: ' + p.group + ')'; }).join('\n')
+    : '  - No active projects currently in production';
+
+  const prompt = 'Using the Richter strategy and voice guidelines in this project, draft a strategy email for ' + client.name + '.\n\nCLIENT CONTEXT:\n- Total remaining contract budget: $' + formatMoneyRaw(client.totalRemaining) + '\n- In production: ' + (client.isInProduction ? 'Yes' : 'No') + '\n\nCONTRACTS:\n' + contractDetails + '\n\nPRODUCTION PROJECTS:\n' + productionContext + '\n\nWrite a warm, strategic outreach email (3–4 paragraphs) that:\n1. Opens with a creative hook relevant to ' + client.name + '\'s industry\n2. Naturally connects to a video opportunity\n3. References their remaining budget as an asset, not a deadline\n4. Ends with a low-pressure next step (quick call or open question)\n\nInclude a subject line. Sign off as: [Your Name], Creative Director, Richter';
+
+  document.getElementById('modalSubtitle').textContent = client.name;
+  document.getElementById('modalClientName').textContent = client.name;
+  document.getElementById('promptOutput').textContent = prompt;
+  document.getElementById('copyPromptBtn').textContent = 'Copy Prompt';
+  document.getElementById('emailModal').classList.add('visible');
+}
+
+function copyPrompt() {
+  const text = document.getElementById('promptOutput').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    const btn = document.getElementById('copyPromptBtn');
+    btn.textContent = '✓ Copied! Paste into Strategy Email Creator';
+    setTimeout(function() { btn.textContent = 'Copy Prompt'; }, 3000);
+  });
+}
+
+function closeModal() { document.getElementById('emailModal').classList.remove('visible'); }
+document.getElementById('emailModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+// ── CHART ──
+let revenueChartInstance = null;
+let revenueChartModalInstance = null;
+let allGroupsCache = null;
+let weekDataCache = {};
+
+async function fetchAndRenderChart() {
+  const loadingEl = document.getElementById('chartLoading');
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  try {
+    const { labels, totals, counts } = await getWeekData(6);
+    if (loadingEl) loadingEl.classList.add('hidden');
+    renderInlineChart(labels, totals, counts);
+  } catch(err) {
+    if (loadingEl) loadingEl.textContent = 'Chart error: ' + err.message;
+  }
+}
+
+async function getWeekData(numWeeks) {
+  if (!allGroupsCache) {
+    const gData = await mondayQuery('query { boards(ids:[' + COMPLETED_BOARD_ID + ']) { groups { id title } } }');
+    allGroupsCache = gData.boards[0].groups;
+  }
+
+  const groups = allGroupsCache.slice(0, numWeeks === 999 ? allGroupsCache.length : numWeeks);
+  const reversed = groups.slice().reverse();
+  const labels = [], totals = [], counts = [];
+
+  for (var i = 0; i < reversed.length; i++) {
+    var group = reversed[i];
+    var label = group.title.replace(/week ending/i, '').trim();
+    try { var d = new Date(label); if (!isNaN(d)) label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch(e) {}
+    labels.push(label);
+
+    var cacheKey = group.id + '_' + currentClientType;
+    if (weekDataCache[cacheKey]) {
+      totals.push(weekDataCache[cacheKey].total);
+      counts.push(weekDataCache[cacheKey].count);
+      continue;
+    }
+
+    var itemData = await mondayQuery(`
+      query {
+        boards(ids:[${COMPLETED_BOARD_ID}]) {
+          groups(ids:["${group.id}"]) {
+            items_page(limit: 200) {
+              items { column_values { id text } }
+            }
+          }
+        }
+      }
+    `);
+
+    var items = itemData.boards[0].groups[0].items_page.items;
+    var weekTotal = 0, weekCount = 0;
+    items.forEach(function(item) {
+      var colMap = {};
+      item.column_values.forEach(function(cv) { colMap[cv.id] = cv; });
+      var lbl = (colMap['status_1__1'] || {}).text || '';
+      // Map client types: Enterprise = Enterprise, others match directly
+      var matchLabel = currentClientType === 'RP' ? 'richter productions' : currentClientType.toLowerCase();
+      if (lbl.toLowerCase() === matchLabel || (currentClientType === 'Enterprise' && lbl.toLowerCase() === 'enterprise')) {
+        var val = parseFloat((colMap['numbers__1'] || {}).text || '0') || 0;
+        weekTotal += val;
+        weekCount++;
+      }
+    });
+    weekDataCache[cacheKey] = { total: weekTotal, count: weekCount };
+    totals.push(weekTotal);
+    counts.push(weekCount);
+  }
+
+  return { labels, totals, counts };
+}
+
+function buildChartConfig(labels, totals, counts) {
+  return {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'VSD ($)', data: totals, borderColor: '#C30000', backgroundColor: 'rgba(195,0,0,0.07)', borderWidth: 2.5, pointBackgroundColor: '#C30000', pointRadius: 4, pointHoverRadius: 6, fill: true, tension: 0, yAxisID: 'yVSD' },
+        { label: 'Projects Complete', data: counts, borderColor: '#2a7a4f', backgroundColor: 'transparent', borderWidth: 2, pointBackgroundColor: '#2a7a4f', pointRadius: 4, pointHoverRadius: 6, fill: false, tension: 0, borderDash: [5,3], yAxisID: 'yCount' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { font: { family: 'DM Mono, monospace', size: 10 }, color: '#888', boxWidth: 12, padding: 16, usePointStyle: true } },
+        tooltip: {
+          callbacks: { label: function(ctx) { return ctx.datasetIndex === 0 ? '  VSD: $' + ctx.parsed.y.toLocaleString() : '  Projects: ' + ctx.parsed.y; } },
+          backgroundColor: '#1a1a1a', titleColor: '#e2e2e2', bodyColor: '#ccc', borderColor: '#333', borderWidth: 1, padding: 12
+        }
+      },
+      scales: {
+        x: { grid: { color: '#f0f0f0' }, ticks: { font: { family: 'DM Mono, monospace', size: 10 }, color: '#888', maxRotation: 45 } },
+        yVSD: { type: 'linear', position: 'left', min: 0, max: 80000, grid: { color: '#f0f0f0' }, ticks: { font: { family: 'DM Mono, monospace', size: 10 }, color: '#C30000', callback: function(v) { if (v >= 1000) return '$' + (v/1000).toFixed(0) + 'k'; return '$' + v; } } },
+        yCount: { type: 'linear', position: 'right', min: 0, max: 8, grid: { drawOnChartArea: false }, ticks: { font: { family: 'DM Mono, monospace', size: 10 }, color: '#2a7a4f', stepSize: 1, callback: function(v) { return Number.isInteger(v) ? v : ''; } } }
+      }
+    }
+  };
+}
+
+function renderInlineChart(labels, totals, counts) {
+  var grandTotal = totals.reduce(function(s,v){return s+v;},0);
+  var grandCount = counts.reduce(function(s,v){return s+v;},0);
+  document.getElementById('chartTotal').innerHTML =
+    '<div class="chart-total-val">' + formatMoney(grandTotal) + '</div>' +
+    '<div class="chart-total-lbl">' + grandCount + ' projects · 6-week total</div>';
+  var ctx = document.getElementById('revenueChart').getContext('2d');
+  if (revenueChartInstance) revenueChartInstance.destroy();
+  revenueChartInstance = new Chart(ctx, buildChartConfig(labels, totals, counts));
+}
+
+async function openChartModal() {
+  document.getElementById('chartModal').classList.add('visible');
+  document.getElementById('weeksSelect').value = '6';
+  await updateModalChart();
+}
+
+async function updateModalChart() {
+  const numWeeks = parseInt(document.getElementById('weeksSelect').value);
+  document.getElementById('chartLoadingModal').style.display = 'flex';
+  try {
+    const { labels, totals, counts } = await getWeekData(numWeeks);
+    document.getElementById('chartLoadingModal').style.display = 'none';
+    var grandTotal = totals.reduce(function(s,v){return s+v;},0);
+    var grandCount = counts.reduce(function(s,v){return s+v;},0);
+    var wLabel = numWeeks === 999 ? 'All time' : numWeeks + '-week';
+    document.getElementById('modalChartTotal').innerHTML =
+      '<div class="chart-total-val">' + formatMoney(grandTotal) + '</div>' +
+      '<div class="chart-total-lbl">' + grandCount + ' projects · ' + wLabel + ' total</div>';
+    var ctx = document.getElementById('revenueChartModal').getContext('2d');
+    if (revenueChartModalInstance) revenueChartModalInstance.destroy();
+    revenueChartModalInstance = new Chart(ctx, buildChartConfig(labels, totals, counts));
+  } catch(err) {
+    document.getElementById('chartLoadingModal').textContent = 'Error: ' + err.message;
+  }
+}
+
+function closeChartModal() { document.getElementById('chartModal').classList.remove('visible'); }
+document.getElementById('chartModal').addEventListener('click', function(e) { if (e.target === this) closeChartModal(); });
+
+// ── REFRESH ──
+async function refreshDashboard() {
+  document.getElementById('clientsGrid').innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">Refreshing...</div></div>';
+  allGroupsCache = null;
+  weekDataCache = {};
+  try {
+    const clients = await fetchAllClients();
+    const production = await fetchProductionItems();
+    allClients = processClients(clients, production);
+    renderDashboard();
+    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    fetchAndRenderChart();
+  } catch(err) {
+    document.getElementById('clientsGrid').innerHTML = '<div class="empty-state">Refresh failed: ' + err.message + '</div>';
+  }
+}
+
+// ── UTILS ──
+function formatMoney(n) {
+  if (!n || n <= 0) return '$0';
+  if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + (n/1000).toFixed(0) + 'k';
+  return '$' + Math.round(n).toLocaleString();
+}
+function formatMoneyRaw(n) { return !n || n <= 0 ? '0' : Math.round(n).toLocaleString(); }
+function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function setProgress(p) { document.getElementById('progressBar').style.width = p + '%'; }
+function setSetupStatus(msg, type) { const el = document.getElementById('setupStatus'); if(el){el.textContent = msg; el.className = 'setup-status ' + (type||'');} }
+
+document.getElementById('tokenInput') && document.getElementById('tokenInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') loadDashboard(); });
+</script>
+</body>
+</html>
