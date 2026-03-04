@@ -630,7 +630,7 @@ async function fetchCompletedItems() {
           cv.linked_items.forEach(function(linked) {
             var cid = String(linked.id);
             if (!lastCompletedByClientId[cid]) {
-              lastCompletedByClientId[cid] = { weekTitle: group.title, weekDate: weekDate };
+              lastCompletedByClientId[cid] = { weekTitle: group.title, weekDate: weekDate, projectId: item.id, projectName: item.name };
             }
           });
         });
@@ -691,6 +691,8 @@ function processClients(rawClients, rawProduction, completedByClientId) {
     const completedData = completedByClientId[String(client.id)] || null;
     const lastCompletedTitle = completedData ? completedData.weekTitle : null;
     const lastCompletedDate = completedData ? completedData.weekDate : null;
+    const lastCompletedProjectId = completedData ? completedData.projectId : null;
+    const lastCompletedProjectName = completedData ? completedData.projectName : null;
 
     // Days since last completed
     const daysSinceCompleted = lastCompletedDate
@@ -706,7 +708,7 @@ function processClients(rawClients, rawProduction, completedByClientId) {
     else if (totalRemaining > 0 && isInProduction) health = 'active';
     else if (totalRemaining > 0) health = 'attention';
 
-    return { id: client.id, name: client.name, clientType, programUrl, contracts, totalRemaining, activeContracts, productionItems, isInProduction, health, lastCompletedTitle, lastCompletedDate, daysSinceCompleted, alertNoProgram, alertGoneDark };
+    return { id: client.id, name: client.name, clientType, programUrl, contracts, totalRemaining, activeContracts, productionItems, isInProduction, health, lastCompletedTitle, lastCompletedDate, lastCompletedProjectId, lastCompletedProjectName, daysSinceCompleted, alertNoProgram, alertGoneDark };
   }).filter(function(c) { return c.contracts.length > 0 && c.clientType; });
 }
 
@@ -800,9 +802,12 @@ function renderCard(client, index) {
       '<div class="expand-section"><div class="expand-section-title">Contracts</div>' + contractsHtml + '</div>' +
       '<div class="expand-section"><div class="expand-section-title">Projects in Production</div>' + prodHtml + '</div>' +
       '<div class="expand-section"><div class="expand-section-title">Last Completed Project</div>' +
-        (client.lastCompletedTitle
-          ? '<div style="font-size:13px;color:var(--text);">' + esc(client.lastCompletedTitle) +
-            (client.daysSinceCompleted !== null ? '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:' + (client.daysSinceCompleted > 60 ? 'var(--red)' : 'var(--muted)') + ';margin-left:10px;">' + client.daysSinceCompleted + ' days ago</span>' : '') +
+        (client.lastCompletedProjectId
+          ? '<div class="production-item">' +
+              '<div class="prod-name"><a href="https://gorichter.monday.com/boards/' + COMPLETED_BOARD_ID + '/pulses/' + client.lastCompletedProjectId + '" target="_blank" class="prod-link">' + esc(client.lastCompletedProjectName) + '</a>' +
+              (client.daysSinceCompleted !== null ? '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:' + (client.daysSinceCompleted > 60 ? 'var(--red)' : 'var(--muted)') + ';margin-left:10px;">' + client.daysSinceCompleted + ' days ago</span>' : '') +
+              '</div>' +
+              '<div class="prod-group">' + esc(client.lastCompletedTitle) + '</div>' +
             '</div>'
           : '<div class="empty-section">No completed projects found in the last 8 weeks.</div>') +
       '</div>' +
