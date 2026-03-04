@@ -612,6 +612,8 @@ async function fetchCompletedItems() {
             groups(ids:["${group.id}"]) {
               items_page(limit: 100) {
                 items {
+                  id
+                  name
                   column_values {
                     id
                     ... on BoardRelationValue { linked_items { id name } }
@@ -749,8 +751,7 @@ function renderCard(client, index) {
 
   // Alert badges
   const alertBadges =
-    (client.alertNoProgram ? '<span class="badge alert-program">⚠ No Client Program</span>' : '') +
-    (client.alertGoneDark ? '<span class="badge alert-dark">● Gone Dark</span>' : '');
+    (client.alertNoProgram ? '<span class="badge alert-program">⚠ No Client Program</span>' : '');
 
   // Last completed metric
   var lastCompLabel, lastCompClass = 'muted';
@@ -762,7 +763,7 @@ function renderCard(client, index) {
     lastCompLabel = raw;
     if (client.daysSinceCompleted !== null && client.daysSinceCompleted > 60) lastCompClass = 'stale';
   } else {
-    lastCompLabel = 'Never';
+    lastCompLabel = 'None found';
     lastCompClass = 'stale';
   }
 
