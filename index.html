@@ -592,54 +592,45 @@ async function fetchProductionItems() {
 }
 
 async function fetchCompletedItems() {
-  // Fetch all groups (newest first), then items with board relation to clients
-  // We only need the group title (date) and the connect_boards__1 link
   const gData = await mondayQuery('query { boards(ids:[' + COMPLETED_BOARD_ID + ']) { groups { id title } } }');
-  const groups = gData.boards[0].groups; // index 0 = most recent week
+  const groups = gData.boards[0].groups;
+  const recentGroups = groups.slice(0, 8); // 8 most recent weeks
 
-  // Build map: clientId -> { weekTitle, weekDate }
-  // Scan groups newest-first; stop once we've seen all clients or hit 52 weeks
   const lastCompletedByClientId = {};
-  const limit = Math.min(groups.length, 52);
 
-  for (var i = 0; i < limit; i++) {
-    var group = groups[i];
-    // Parse date from group title e.g. "Week Ending 2/27/26"
+  // Fetch all 8 groups in a single query using multiple aliases
+  const aliases = recentGroups.map(function(g, i) {
+    return 'g' + i + ': groups(ids:["' + g.id + '"]) { items_page(limit:200) { items { column_values { id ... on BoardRelationValue { linked_items { id name } } } } } }';
+  }).join('\n');
+
+  const data = await mondayQuery(`
+    query {
+      boards(ids:[${COMPLETED_BOARD_ID}]) {
+        ${aliases}
+      }
+    }
+  `);
+
+  const board = data.boards[0];
+  recentGroups.forEach(function(group, i) {
     var rawDate = group.title.replace(/week ending/i, '').trim();
     var weekDate = null;
     try { var d = new Date(rawDate); if (!isNaN(d)) weekDate = d; } catch(e) {}
 
-    var itemData = await mondayQuery(`
-      query {
-        boards(ids:[${COMPLETED_BOARD_ID}]) {
-          groups(ids:["${group.id}"]) {
-            items_page(limit: 200) {
-              items {
-                column_values {
-                  id
-                  ... on BoardRelationValue { linked_items { id name } }
-                }
-              }
-            }
-          }
-        }
-      }
-    `);
-
-    var items = itemData.boards[0].groups[0].items_page.items;
-    items.forEach(function(item) {
+    var groupData = board['g' + i];
+    if (!groupData) return;
+    groupData.items_page.items.forEach(function(item) {
       item.column_values.forEach(function(cv) {
         if (!cv.linked_items || !cv.linked_items.length) return;
         cv.linked_items.forEach(function(linked) {
           var cid = String(linked.id);
-          // Only store the first (most recent) occurrence per client
           if (!lastCompletedByClientId[cid]) {
             lastCompletedByClientId[cid] = { weekTitle: group.title, weekDate: weekDate };
           }
         });
       });
     });
-  }
+  });
 
   return lastCompletedByClientId;
 }
@@ -799,6 +790,13 @@ function renderCard(client, index) {
     '<div class="card-expanded" id="expanded-' + client.id + '">' +
       '<div class="expand-section"><div class="expand-section-title">Contracts</div>' + contractsHtml + '</div>' +
       '<div class="expand-section"><div class="expand-section-title">Projects in Production</div>' + prodHtml + '</div>' +
+      '<div class="expand-section"><div class="expand-section-title">Last Completed Project</div>' +
+        (client.lastCompletedTitle
+          ? '<div style="font-size:13px;color:var(--text);">' + esc(client.lastCompletedTitle) +
+            (client.daysSinceCompleted !== null ? '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:' + (client.daysSinceCompleted > 60 ? 'var(--red)' : 'var(--muted)') + ';margin-left:10px;">' + client.daysSinceCompleted + ' days ago</span>' : '') +
+            '</div>'
+          : '<div class="empty-section">No completed projects found in the last 8 weeks.</div>') +
+      '</div>' +
     '</div>' +
     '<div class="card-actions" id="actions-' + client.id + '">' +
       '<button class="btn-action primary" onclick="openEmailModal(\'' + client.id + '\')">✉ Draft Strategy Email</button>' +
