@@ -594,43 +594,52 @@ async function fetchProductionItems() {
 async function fetchCompletedItems() {
   const gData = await mondayQuery('query { boards(ids:[' + COMPLETED_BOARD_ID + ']) { groups { id title } } }');
   const groups = gData.boards[0].groups;
-  const recentGroups = groups.slice(0, 8); // 8 most recent weeks
+  const recentGroups = groups.slice(0, 8);
 
   const lastCompletedByClientId = {};
 
-  // Fetch all 8 groups in a single query using multiple aliases
-  const aliases = recentGroups.map(function(g, i) {
-    return 'g' + i + ': groups(ids:["' + g.id + '"]) { items_page(limit:200) { items { column_values { id ... on BoardRelationValue { linked_items { id name } } } } } }';
-  }).join('\n');
-
-  const data = await mondayQuery(`
-    query {
-      boards(ids:[${COMPLETED_BOARD_ID}]) {
-        ${aliases}
-      }
-    }
-  `);
-
-  const board = data.boards[0];
-  recentGroups.forEach(function(group, i) {
+  // Fetch each group separately but sequentially — simple and reliable
+  for (var i = 0; i < recentGroups.length; i++) {
+    var group = recentGroups[i];
     var rawDate = group.title.replace(/week ending/i, '').trim();
     var weekDate = null;
     try { var d = new Date(rawDate); if (!isNaN(d)) weekDate = d; } catch(e) {}
 
-    var groupData = board['g' + i];
-    if (!groupData) return;
-    groupData.items_page.items.forEach(function(item) {
-      item.column_values.forEach(function(cv) {
-        if (!cv.linked_items || !cv.linked_items.length) return;
-        cv.linked_items.forEach(function(linked) {
-          var cid = String(linked.id);
-          if (!lastCompletedByClientId[cid]) {
-            lastCompletedByClientId[cid] = { weekTitle: group.title, weekDate: weekDate };
+    try {
+      var itemData = await mondayQuery(`
+        query {
+          boards(ids:[${COMPLETED_BOARD_ID}]) {
+            groups(ids:["${group.id}"]) {
+              items_page(limit: 100) {
+                items {
+                  column_values {
+                    id
+                    ... on BoardRelationValue { linked_items { id name } }
+                  }
+                }
+              }
+            }
           }
+        }
+      `);
+
+      var items = itemData.boards[0].groups[0].items_page.items;
+      items.forEach(function(item) {
+        item.column_values.forEach(function(cv) {
+          if (!cv.linked_items || !cv.linked_items.length) return;
+          cv.linked_items.forEach(function(linked) {
+            var cid = String(linked.id);
+            if (!lastCompletedByClientId[cid]) {
+              lastCompletedByClientId[cid] = { weekTitle: group.title, weekDate: weekDate };
+            }
+          });
         });
       });
-    });
-  });
+    } catch(e) {
+      // Skip this week if it errors, continue to next
+      console.warn('Skipped group ' + group.title + ':', e.message);
+    }
+  }
 
   return lastCompletedByClientId;
 }
