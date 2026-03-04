@@ -134,6 +134,9 @@ input::placeholder { color: var(--dim); }
 .badge.urgent { background: var(--red-dim); color: var(--red); border: 1px solid rgba(224,85,85,0.25); }
 .badge.attention { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(176,125,0,0.25); }
 .badge.active { background: var(--green-dim); color: var(--green); border: 1px solid rgba(42,122,79,0.25); }
+.badge.alert-program { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(212,96,0,0.3); }
+.badge.alert-dark { background: #2a0a0a; color: #ff6b6b; border: 1px solid rgba(255,107,107,0.35); }
+.metric-value.stale { color: var(--red); font-size: 12px; }
 .card-metrics { display: flex; gap: 24px; flex-wrap: wrap; }
 .metric { display: flex; flex-direction: column; gap: 2px; text-align: right; }
 .metric-value { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 500; color: var(--brand); }
@@ -514,14 +517,17 @@ async function loadDashboard() {
   document.getElementById('progressWrap').classList.add('visible');
 
   try {
-    setSetupStatus('Loading all clients...', 'loading'); setProgress(15);
+    setSetupStatus('Loading all clients...', 'loading'); setProgress(10);
     const clients = await fetchAllClients();
 
-    setSetupStatus('Loading production board...', 'loading'); setProgress(45);
+    setSetupStatus('Loading production board...', 'loading'); setProgress(35);
     const production = await fetchProductionItems();
 
-    setSetupStatus('Processing data...', 'loading'); setProgress(75);
-    allClients = processClients(clients, production);
+    setSetupStatus('Loading completed projects...', 'loading'); setProgress(60);
+    const completed = await fetchCompletedItems();
+
+    setSetupStatus('Processing data...', 'loading'); setProgress(80);
+    allClients = processClients(clients, production, completed);
 
     setProgress(100);
     setTimeout(function() {
@@ -585,7 +591,62 @@ async function fetchProductionItems() {
   return data.boards[0].items_page.items;
 }
 
-function processClients(rawClients, rawProduction) {
+async function fetchCompletedItems() {
+  // Fetch all groups (newest first), then items with board relation to clients
+  // We only need the group title (date) and the connect_boards__1 link
+  const gData = await mondayQuery('query { boards(ids:[' + COMPLETED_BOARD_ID + ']) { groups { id title } } }');
+  const groups = gData.boards[0].groups; // index 0 = most recent week
+
+  // Build map: clientId -> { weekTitle, weekDate }
+  // Scan groups newest-first; stop once we've seen all clients or hit 52 weeks
+  const lastCompletedByClientId = {};
+  const limit = Math.min(groups.length, 52);
+
+  for (var i = 0; i < limit; i++) {
+    var group = groups[i];
+    // Parse date from group title e.g. "Week Ending 2/27/26"
+    var rawDate = group.title.replace(/week ending/i, '').trim();
+    var weekDate = null;
+    try { var d = new Date(rawDate); if (!isNaN(d)) weekDate = d; } catch(e) {}
+
+    var itemData = await mondayQuery(`
+      query {
+        boards(ids:[${COMPLETED_BOARD_ID}]) {
+          groups(ids:["${group.id}"]) {
+            items_page(limit: 200) {
+              items {
+                column_values {
+                  id
+                  ... on BoardRelationValue { linked_items { id name } }
+                }
+              }
+            }
+          }
+        }
+      }
+    `);
+
+    var items = itemData.boards[0].groups[0].items_page.items;
+    items.forEach(function(item) {
+      item.column_values.forEach(function(cv) {
+        if (!cv.linked_items || !cv.linked_items.length) return;
+        cv.linked_items.forEach(function(linked) {
+          var cid = String(linked.id);
+          // Only store the first (most recent) occurrence per client
+          if (!lastCompletedByClientId[cid]) {
+            lastCompletedByClientId[cid] = { weekTitle: group.title, weekDate: weekDate };
+          }
+        });
+      });
+    });
+  }
+
+  return lastCompletedByClientId;
+}
+
+function processClients(rawClients, rawProduction, completedByClientId) {
+  completedByClientId = completedByClientId || {};
+
   // Build production map by client ID
   const productionByClientId = {};
   rawProduction.forEach(function(item) {
@@ -603,10 +664,8 @@ function processClients(rawClients, rawProduction) {
     const colMap = {};
     client.column_values.forEach(function(cv) { colMap[cv.id] = cv; });
 
-    // Client type
     const clientType = (colMap[CLIENT_TYPE_COL] || {}).text || '';
 
-    // Program link
     let programUrl = null;
     const progCol = colMap[CLIENT_PROGRAM_COL];
     if (progCol && progCol.value) {
@@ -614,7 +673,6 @@ function processClients(rawClients, rawProduction) {
     }
     if (!programUrl && progCol && progCol.text && progCol.text.startsWith('http')) programUrl = progCol.text;
 
-    // Contracts from subitems
     const contracts = (client.subitems || []).map(function(sub) {
       const sc = {};
       sub.column_values.forEach(function(cv) { sc[cv.id] = cv; });
@@ -629,12 +687,26 @@ function processClients(rawClients, rawProduction) {
     const productionItems = productionByClientId[String(client.id)] || [];
     const isInProduction = productionItems.length > 0;
 
+    // Last completed lookup
+    const completedData = completedByClientId[String(client.id)] || null;
+    const lastCompletedTitle = completedData ? completedData.weekTitle : null;
+    const lastCompletedDate = completedData ? completedData.weekDate : null;
+
+    // Days since last completed
+    const daysSinceCompleted = lastCompletedDate
+      ? Math.floor((Date.now() - lastCompletedDate.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+
+    // Alerts
+    const alertNoProgram = !programUrl;
+    const alertGoneDark = !isInProduction && (daysSinceCompleted === null || daysSinceCompleted > 60);
+
     let health = 'ok';
     if (totalRemaining > 0 && !isInProduction && activeContracts.length > 0) health = 'urgent';
     else if (totalRemaining > 0 && isInProduction) health = 'active';
     else if (totalRemaining > 0) health = 'attention';
 
-    return { id: client.id, name: client.name, clientType, programUrl, contracts, totalRemaining, activeContracts, productionItems, isInProduction, health };
+    return { id: client.id, name: client.name, clientType, programUrl, contracts, totalRemaining, activeContracts, productionItems, isInProduction, health, lastCompletedTitle, lastCompletedDate, daysSinceCompleted, alertNoProgram, alertGoneDark };
   }).filter(function(c) { return c.contracts.length > 0 && c.clientType; });
 }
 
@@ -673,6 +745,25 @@ function renderCard(client, index) {
     ok: ''
   };
 
+  // Alert badges
+  const alertBadges =
+    (client.alertNoProgram ? '<span class="badge alert-program">⚠ No Client Program</span>' : '') +
+    (client.alertGoneDark ? '<span class="badge alert-dark">● Gone Dark</span>' : '');
+
+  // Last completed metric
+  var lastCompLabel, lastCompClass = 'muted';
+  if (client.isInProduction) {
+    lastCompLabel = 'In Production';
+  } else if (client.lastCompletedTitle) {
+    var raw = client.lastCompletedTitle.replace(/week ending/i, '').trim();
+    try { var d = new Date(raw); if (!isNaN(d)) raw = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }); } catch(e) {}
+    lastCompLabel = raw;
+    if (client.daysSinceCompleted !== null && client.daysSinceCompleted > 60) lastCompClass = 'stale';
+  } else {
+    lastCompLabel = 'Never';
+    lastCompClass = 'stale';
+  }
+
   const contractsHtml = client.contracts.map(function(c) {
     const sl = c.status.toLowerCase();
     const sc = sl.includes('progress')||sl.includes('active') ? 'in-progress' : sl.includes('complete')||sl.includes('done') ? 'complete' : 'default';
@@ -697,11 +788,12 @@ function renderCard(client, index) {
 
   return '<div class="client-card ' + healthClass + '" style="animation-delay:' + delay + 'ms">' +
     '<div class="card-top" onclick="toggleCard(\'' + client.id + '\')">' +
-      '<div class="client-name-row"><div class="client-name">' + esc(client.name) + '</div>' + badges[client.health] + '</div>' +
+      '<div class="client-name-row"><div class="client-name">' + esc(client.name) + '</div>' + badges[client.health] + alertBadges + '</div>' +
       '<div class="card-metrics">' +
         '<div class="metric"><div class="metric-value">' + formatMoney(client.totalRemaining) + '</div><div class="metric-label">Remaining</div></div>' +
         '<div class="metric"><div class="metric-value muted">' + client.contracts.length + '</div><div class="metric-label">Contracts</div></div>' +
         '<div class="metric"><div class="metric-value muted">' + client.productionItems.length + '</div><div class="metric-label">In Production</div></div>' +
+        '<div class="metric"><div class="metric-value ' + lastCompClass + '">' + esc(lastCompLabel) + '</div><div class="metric-label">Last Completed</div></div>' +
       '</div>' +
     '</div>' +
     '<div class="card-expanded" id="expanded-' + client.id + '">' +
@@ -968,7 +1060,8 @@ async function refreshDashboard() {
   try {
     const clients = await fetchAllClients();
     const production = await fetchProductionItems();
-    allClients = processClients(clients, production);
+    const completed = await fetchCompletedItems();
+    allClients = processClients(clients, production, completed);
     renderDashboard();
     document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
     fetchAndRenderChart();
